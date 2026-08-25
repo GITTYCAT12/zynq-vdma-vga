@@ -1,0 +1,48 @@
+# Vivado generated data
+.Xil/
+*.jou
+*.log
+*.str
+*.wdb
+*.pb
+*.dcp
+*.rpt
+*.xml
+*.wlf
+*.ip_user_files/
+*.cache/
+*.gen/
+*.runs/
+*.hw/
+*.sim/
+*.xil/
+
+# Vitis / embedded build output
+build/
+Debug/
+Release/
+.vitis/
+.venv/
+*.elf
+*.map
+*.lst
+*.o
+*.d
+*.a
+
+# IDE / OS files
+_ide/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Generated platform exports and temporary files
+export/
+tmp/
+logs/
+*.tmp
+*.bak
+
+# Source design artifacts such as .xpr, .bd, .xci, .xdc, .tcl, .c, .h and .xsa are intentionally tracked.

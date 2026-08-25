@@ -1,0 +1,157 @@
+#include <stdio.h>
+#include <stdint.h>
+#include "xparameters.h"
+#include "xil_types.h"
+#include "xstatus.h"
+#include "xaxivdma.h"
+#include "xil_cache.h"
+#include "xil_printf.h"
+
+// --- Display Parameters (640x480 @ 24-bit RGB) ---
+#define FRAME_WIDTH          640
+#define FRAME_HEIGHT         480
+#define BYTES_PER_PIXEL      3   // 24-bit RGB = 3 bytes per pixel
+#define STRIDE               (FRAME_WIDTH * BYTES_PER_PIXEL) // 1920 bytes per row
+
+// --- Framebuffer DDR Memory Start Address ---
+#define FRAME_BUFFER_BASE_ADDR  0x10000000U // 256MB offset in DDR
+
+// --- Macro Fallbacks for Vitis 2026.1 SDT Flow ---
+#ifndef VDMA_LOOKUP_ID
+    #if defined(XPAR_XAXIVDMA_0_BASEADDR)
+        #define VDMA_LOOKUP_ID XPAR_XAXIVDMA_0_BASEADDR
+    #elif defined(XPAR_AXI_VDMA_0_BASEADDR)
+        #define VDMA_LOOKUP_ID XPAR_AXI_VDMA_0_BASEADDR
+    #elif defined(XPAR_AXI_VDMA_0_DEVICE_ID)
+        #define VDMA_LOOKUP_ID XPAR_AXI_VDMA_0_DEVICE_ID
+    #else
+        #define VDMA_LOOKUP_ID 0
+    #endif
+#endif
+
+// Global VDMA Hardware Instance
+XAxiVdma VdmaInstance;
+
+// Function Prototypes
+void Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
+int Init_And_Start_VDMA(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
+
+int main(void) {
+    xil_printf("\r\n=====================================================\r\n");
+    xil_printf("   ZYNQ VDMA VGA DISPLAY SYSTEM - HARDWARE INITIALIZED\r\n");
+    xil_printf("=====================================================\r\n");
+
+    // 1. Generate 8 RGB Color Bars in DDR Memory
+    xil_printf("1. Writing 640x480 RGB Color Pattern to DDR RAM (0x%08X)...\r\n", (unsigned int)FRAME_BUFFER_BASE_ADDR);
+    Draw_RGB_Color_Bars((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE);
+
+    // 2. Configure and Start VDMA Engine
+    xil_printf("2. Initializing AXI VDMA Read Controller...\r\n");
+    if (Init_And_Start_VDMA((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE) != XST_SUCCESS) {
+        xil_printf("FATAL ERROR: VDMA Hardware Initialization Failed!\r\n");
+        return -1;
+    }
+
+    xil_printf("3. SUCCESS: Video Streaming Active! VDMA reading DDR continuously.\r\n");
+    xil_printf("=====================================================\r\n");
+
+    // Main CPU stays idle while VDMA streams framebuffers in background hardware
+    while (1) {
+        // Application running
+    }
+
+    return 0;
+}
+
+// Draw 8 SMPTE RGB Color Bars (White, Yellow, Cyan, Green, Magenta, Red, Blue, Black)
+void Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride) {
+    uint8_t *BufferPtr = (uint8_t *)FrameAddr;
+    uint32_t row;
+    uint32_t col;
+    uint32_t BarWidth = Width / 8; // 80 pixels per color bar
+
+    uint8_t ColorPalette[8][3] = {
+        {255, 255, 255}, // White
+        {255, 255,   0}, // Yellow
+        {  0, 255, 255}, // Cyan
+        {  0, 255,   0}, // Green
+        {255,   0, 255}, // Magenta
+        {255,   0,   0}, // Red
+        {  0,   0, 255}, // Blue
+        {  0,   0,   0}  // Black
+    };
+
+    for (row = 0; row < Height; row++) {
+        for (col = 0; col < Width; col++) {
+            uint32_t BarIndex = col / BarWidth;
+            if (BarIndex > 7) {
+                BarIndex = 7;
+            }
+
+            uint32_t ByteOffset = (row * Stride) + (col * BYTES_PER_PIXEL);
+
+            BufferPtr[ByteOffset + 0] = ColorPalette[BarIndex][0]; // Red
+            BufferPtr[ByteOffset + 1] = ColorPalette[BarIndex][1]; // Green
+            BufferPtr[ByteOffset + 2] = ColorPalette[BarIndex][2]; // Blue
+        }
+    }
+
+    // CRITICAL: Flush CPU L1/L2 Cache so VDMA reads pixels directly from DDR RAM!
+    Xil_DCacheFlushRange((INTPTR)FrameAddr, (INTPTR)(Height * Stride));
+}
+
+// Configure and Start VDMA Read Channel (MM2S)
+int Init_And_Start_VDMA(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride) {
+    int Status;
+    XAxiVdma_Config *VdmaConfig;
+    XAxiVdma_DmaSetup ReadChannelCfg;
+    UINTPTR BufferAddrArray[1];
+
+    // Lookup Hardware Config using Vitis 2026.1 compatible ID/BaseAddr
+    VdmaConfig = XAxiVdma_LookupConfig(VDMA_LOOKUP_ID);
+    if (!VdmaConfig) {
+        xil_printf("ERROR: VDMA LookupConfig failed!\r\n");
+        return XST_FAILURE;
+    }
+
+    // Initialize Driver
+    Status = XAxiVdma_CfgInitialize(&VdmaInstance, VdmaConfig, VdmaConfig->BaseAddress);
+    if (Status != XST_SUCCESS) {
+        xil_printf("ERROR: VDMA CfgInitialize failed!\r\n");
+        return XST_FAILURE;
+    }
+
+    // Set DMA Read Channel Parameters
+    ReadChannelCfg.VertSizeInput       = Height;
+    ReadChannelCfg.HoriSizeInput       = Stride;
+    ReadChannelCfg.Stride              = Stride;
+    ReadChannelCfg.FrameDelay          = 0;
+    ReadChannelCfg.EnableCircularBuf   = 1; // Continuous Looping Mode
+    ReadChannelCfg.EnableSync          = 0;
+    ReadChannelCfg.PointNum            = 0;
+    ReadChannelCfg.EnableFrameCounter  = 0;
+    ReadChannelCfg.FixedFrameStoreAddr = 0;
+
+    Status = XAxiVdma_DmaConfig(&VdmaInstance, XAXIVDMA_READ, &ReadChannelCfg);
+    if (Status != XST_SUCCESS) {
+        xil_printf("ERROR: VDMA DmaConfig failed!\r\n");
+        return XST_FAILURE;
+    }
+
+    // Set Framebuffer Address
+    BufferAddrArray[0] = (UINTPTR)FrameAddr;
+    Status = XAxiVdma_DmaSetBufferAddr(&VdmaInstance, XAXIVDMA_READ, BufferAddrArray);
+    if (Status != XST_SUCCESS) {
+        xil_printf("ERROR: VDMA SetBufferAddr failed!\r\n");
+        return XST_FAILURE;
+    }
+
+    // Start DMA Streaming Engine
+    Status = XAxiVdma_DmaStart(&VdmaInstance, XAXIVDMA_READ);
+    if (Status != XST_SUCCESS) {
+        xil_printf("ERROR: VDMA DmaStart failed!\r\n");
+        return XST_FAILURE;
+    }
+
+    return XST_SUCCESS;
+}
