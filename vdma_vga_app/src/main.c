@@ -33,7 +33,8 @@
 XAxiVdma VdmaInstance;
 
 // Function Prototypes
-void Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
+int Validate_Framebuffer_Config(uint32_t Width, uint32_t Height, uint32_t Stride);
+int Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
 int Init_And_Start_VDMA(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
 
 int main(void) {
@@ -41,9 +42,18 @@ int main(void) {
     xil_printf("   ZYNQ VDMA VGA DISPLAY SYSTEM - HARDWARE INITIALIZED\r\n");
     xil_printf("=====================================================\r\n");
 
+    // Reject an invalid framebuffer geometry before touching DDR or VDMA registers.
+    if (Validate_Framebuffer_Config(FRAME_WIDTH, FRAME_HEIGHT, STRIDE) != XST_SUCCESS) {
+        xil_printf("FATAL ERROR: Invalid framebuffer configuration!\r\n");
+        return -1;
+    }
+
     // 1. Generate 8 RGB Color Bars in DDR Memory
     xil_printf("1. Writing 640x480 RGB Color Pattern to DDR RAM (0x%08X)...\r\n", (unsigned int)FRAME_BUFFER_BASE_ADDR);
-    Draw_RGB_Color_Bars((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE);
+    if (Draw_RGB_Color_Bars((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE) != XST_SUCCESS) {
+        xil_printf("FATAL ERROR: Framebuffer generation failed!\r\n");
+        return -1;
+    }
 
     // 2. Configure and Start VDMA Engine
     xil_printf("2. Initializing AXI VDMA Read Controller...\r\n");
@@ -63,13 +73,48 @@ int main(void) {
     return 0;
 }
 
+// Validate geometry before writing the framebuffer or programming VDMA.
+int Validate_Framebuffer_Config(uint32_t Width, uint32_t Height, uint32_t Stride) {
+    uint32_t MinimumStride;
+
+    if (Width == 0 || Height == 0) {
+        xil_printf("ERROR: Frame width/height must be non-zero.\r\n");
+        return XST_FAILURE;
+    }
+
+    // Protect the width-to-byte conversion from 32-bit overflow.
+    if (Width > (UINT32_MAX / BYTES_PER_PIXEL)) {
+        xil_printf("ERROR: Frame width overflows RGB byte calculation.\r\n");
+        return XST_FAILURE;
+    }
+
+    MinimumStride = Width * BYTES_PER_PIXEL;
+    if (Stride < MinimumStride) {
+        xil_printf("ERROR: Stride (%u) is smaller than required (%u).\r\n", (unsigned int)Stride, (unsigned int)MinimumStride);
+        return XST_FAILURE;
+    }
+
+    // The color-bar generator expects the display width to divide into 8 equal bars.
+    if ((Width % 8U) != 0U) {
+        xil_printf("ERROR: Width (%u) must be divisible by 8 for color bars.\r\n", (unsigned int)Width);
+        return XST_FAILURE;
+    }
+
+    // Keep the framebuffer base word-aligned for typical AXI VDMA configurations.
+    if ((FRAME_BUFFER_BASE_ADDR & 0x3U) != 0U) {
+        xil_printf("ERROR: Framebuffer base address is not word-aligned.\r\n");
+        return XST_FAILURE;
+    }
+
+    return XST_SUCCESS;
+}
+
 // Draw 8 SMPTE RGB Color Bars (White, Yellow, Cyan, Green, Magenta, Red, Blue, Black)
-void Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride) {
+int Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride) {
     uint8_t *BufferPtr = (uint8_t *)FrameAddr;
     uint32_t row;
     uint32_t col;
-    uint32_t BarWidth = Width / 8; // 80 pixels per color bar
-
+    uint32_t BarWidth;
     uint8_t ColorPalette[8][3] = {
         {255, 255, 255}, // White
         {255, 255,   0}, // Yellow
@@ -81,11 +126,17 @@ void Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, u
         {  0,   0,   0}  // Black
     };
 
+    if (Validate_Framebuffer_Config(Width, Height, Stride) != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
+
+    BarWidth = Width / 8U;
+
     for (row = 0; row < Height; row++) {
         for (col = 0; col < Width; col++) {
             uint32_t BarIndex = col / BarWidth;
-            if (BarIndex > 7) {
-                BarIndex = 7;
+            if (BarIndex > 7U) {
+                BarIndex = 7U;
             }
 
             uint32_t ByteOffset = (row * Stride) + (col * BYTES_PER_PIXEL);
@@ -98,6 +149,8 @@ void Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, u
 
     // CRITICAL: Flush CPU L1/L2 Cache so VDMA reads pixels directly from DDR RAM!
     Xil_DCacheFlushRange((INTPTR)FrameAddr, (INTPTR)(Height * Stride));
+
+    return XST_SUCCESS;
 }
 
 // Configure and Start VDMA Read Channel (MM2S)
@@ -106,6 +159,10 @@ int Init_And_Start_VDMA(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, ui
     XAxiVdma_Config *VdmaConfig;
     XAxiVdma_DmaSetup ReadChannelCfg;
     UINTPTR BufferAddrArray[1];
+
+    if (Validate_Framebuffer_Config(Width, Height, Stride) != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
 
     // Lookup Hardware Config using Vitis 2026.1 compatible ID/BaseAddr
     VdmaConfig = XAxiVdma_LookupConfig(VDMA_LOOKUP_ID);
