@@ -27,4 +27,19 @@ On a compatible Zynq board with the appropriate VGA/pin constraints:
 - observe the RGB color-bar output;
 - verify that the image remains continuously active while the ARM CPU is idle in the main loop.
 
+## Verification stages
+
+Use the following progression so failures can be localized instead of being treated as one end-to-end failure:
+
+| Stage | What to verify | Expected evidence |
+|---|---|---|
+| Design | PS, VDMA, VTC and video path are present | Vivado block-design review |
+| Software | Framebuffer and VDMA configuration complete | UART/console log |
+| Memory path | Framebuffer is written to the intended DDR region | Address/configuration inspection |
+| Stream path | MM2S starts and remains active | VDMA status/register evidence |
+| Display | RGB color-bar pattern is visible | Monitor/output observation |
+| Stability | Stream remains active after CPU setup finishes | Continuous output with idle main loop |
+
 The uploaded source archive does not claim a specific physical VGA connector pinout because the board was not specified in the source package.
+
+The repository currently documents the verification procedure and expected evidence; successful physical-display validation still depends on a compatible Zynq board and the required VGA/pin constraints.
