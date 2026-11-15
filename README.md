@@ -43,7 +43,7 @@ AXI Protocol Converter ──► AXI VDMA
 
 The standalone application follows a deliberate order so the DMA engine is never started against an invalid framebuffer configuration:
 
-1. Validate the frame dimensions and stride.
+1. Validate the frame dimensions, stride, address alignment, and complete byte range.
 2. Generate the 640×480 RGB color-bar pattern in DDR.
 3. Flush the CPU data cache for the complete framebuffer range.
 4. Initialize the AXI VDMA MM2S channel.
@@ -51,6 +51,8 @@ The standalone application follows a deliberate order so the DMA engine is never
 6. Start VDMA and leave frame streaming to hardware.
 
 The application also checks VDMA configuration, driver initialization, DMA configuration, buffer-address programming, and DMA start status. Any failure stops initialization and reports the failing stage over UART.
+
+The portable byte-range helper has a host-side C regression test. It checks integer and address-range arithmetic only; it does not compile the Xilinx BSP application or establish DDR mapping, cache-coherency, VDMA, or display behavior.
 
 ## Framebuffer configuration
 
@@ -66,7 +68,7 @@ The current software configuration is:
 | VDMA direction | MM2S (DDR → stream) |
 | Buffer mode | Circular |
 
-The framebuffer base is kept word-aligned, and the software verifies that the supplied stride is large enough for the selected RGB width. The color-bar generator also requires the width to divide evenly into eight bars.
+The framebuffer base is kept word-aligned, and the software verifies that the supplied stride is large enough for the selected RGB width. The byte-range check also rejects 32-bit offset overflow, cache-flush lengths that cannot be represented by the signed pointer-sized length type, and address-space wrap. The color-bar generator requires the width to divide evenly into eight bars.
 
 ## Repository layout
 

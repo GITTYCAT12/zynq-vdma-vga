@@ -1,0 +1,29 @@
+name: Framebuffer range checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "vdma_vga_app/src/main.c"
+      - "vdma_vga_app/src/framebuffer_range.h"
+      - "tests/**"
+      - ".github/workflows/framebuffer-range.yml"
+  pull_request:
+    paths:
+      - "vdma_vga_app/src/main.c"
+      - "vdma_vga_app/src/framebuffer_range.h"
+      - "tests/**"
+      - ".github/workflows/framebuffer-range.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  host-range-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compile and run host-side framebuffer range tests
+        run: bash tests/run_host_tests.sh
