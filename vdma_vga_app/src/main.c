@@ -156,7 +156,7 @@ int Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, ui
     }
 
     // CRITICAL: Flush CPU L1/L2 Cache so VDMA reads pixels directly from DDR RAM!
-    Xil_DCacheFlushRange((INTPTR)FrameAddr, (INTPTR)(Height * Stride));
+    Xil_DCacheFlushRange((INTPTR)FrameAddr, (u32)(Height * Stride));
 
     return XST_SUCCESS;
 }

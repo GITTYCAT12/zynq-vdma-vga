@@ -12,7 +12,7 @@
 
 ## Host-side framebuffer range test
 
-The portable helper test checks the configured frame size, zero dimensions, 32-bit byte-offset overflow, signed cache-flush length representability on 32-bit targets, and address-space wrap. It is run by the `Framebuffer range checks` GitHub Actions workflow.
+The portable helper test checks the configured frame size, zero dimensions, 32-bit byte-count overflow and address-space wrap. It is run by the `Framebuffer range checks` GitHub Actions workflow.
 
 This test covers integer/range validation only. It does not compile the Xilinx BSP application and does not prove that the framebuffer address is mapped to DDR, that cache maintenance is correct on the target, or that the VDMA/display path works.
 

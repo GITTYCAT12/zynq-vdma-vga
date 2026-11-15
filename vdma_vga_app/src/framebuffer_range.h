@@ -24,11 +24,7 @@ static inline int Framebuffer_Range_Is_Valid(uintptr_t base,
 
     frame_bytes = (uint64_t)height * (uint64_t)stride;
 
-    /* Xil_DCacheFlushRange receives a signed pointer-sized length. */
-    if (frame_bytes > (uint64_t)INTPTR_MAX) {
-        return 0;
-    }
-
+    /* Xil_DCacheFlushRange uses a u32 byte length; the check above bounds it. */
     /* Reject a buffer whose one-past-end address would wrap uintptr_t. */
     if (frame_bytes > (uint64_t)(UINTPTR_MAX - base)) {
         return 0;

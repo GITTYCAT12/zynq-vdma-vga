@@ -68,7 +68,7 @@ The current software configuration is:
 | VDMA direction | MM2S (DDR → stream) |
 | Buffer mode | Circular |
 
-The framebuffer base is kept word-aligned, and the software verifies that the supplied stride is large enough for the selected RGB width. The byte-range check also rejects 32-bit offset overflow, cache-flush lengths that cannot be represented by the signed pointer-sized length type, and address-space wrap. The color-bar generator requires the width to divide evenly into eight bars.
+The framebuffer base is kept word-aligned, and the software verifies that the supplied stride is large enough for the selected RGB width. The byte-range check also rejects 32-bit byte-count overflow and address-space wrap before the cache flush or framebuffer writes. The color-bar generator requires the width to divide evenly into eight bars.
 
 ## Repository layout
 

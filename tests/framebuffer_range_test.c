@@ -25,16 +25,13 @@ int main(void)
           Framebuffer_Range_Is_Valid((uintptr_t)0x10000000U, 480U, 0U), 0);
     check("32-bit byte-offset overflow is rejected",
           Framebuffer_Range_Is_Valid((uintptr_t)0x10000000U, UINT32_MAX, 2U), 0);
+    check("unsigned 32-bit cache length above INT32_MAX remains representable",
+          Framebuffer_Range_Is_Valid((uintptr_t)0U, 1U, 0x80000000U), 1);
     check("address-space wrap is rejected",
           Framebuffer_Range_Is_Valid(UINTPTR_MAX - (uintptr_t)1000U, 2U, 600U), 0);
     check("range ending at the maximum one-past address is accepted",
           Framebuffer_Range_Is_Valid(UINTPTR_MAX - (uintptr_t)1024U, 1U, 1024U), 1);
 
-#if INTPTR_MAX == INT32_MAX
-    check("signed cache-flush length overflow is rejected",
-          Framebuffer_Range_Is_Valid((uintptr_t)0x10000000U, 1U,
-                                     (uint32_t)INTPTR_MAX + 1U), 0);
-#endif
 
     if (failures != 0) {
         printf("FAIL: %d framebuffer range check(s) failed.\n", failures);
