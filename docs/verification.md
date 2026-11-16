@@ -10,11 +10,17 @@
 - Confirm the application uses a 640×480, 24-bit RGB framebuffer.
 - Run the host-only framebuffer arithmetic checks with `bash tests/run_host_tests.sh`.
 
-## Host-side framebuffer range test
+## Host-side framebuffer tests
 
-The portable helper test checks the configured frame size, zero dimensions, 32-bit byte-count overflow and address-space wrap. It is run by the `Framebuffer range checks` GitHub Actions workflow.
+Run both portable C regression suites with:
 
-This test covers integer/range validation only. It does not compile the Xilinx BSP application and does not prove that the framebuffer address is mapped to DDR, that cache maintenance is correct on the target, or that the VDMA/display path works.
+```bash
+bash tests/run_host_tests.sh
+```
+
+The range suite checks the configured frame size, zero dimensions, 32-bit byte-count overflow and address-space wrap. The RGB pattern suite checks all eight bar colors across multiple rows, verifies that row padding is preserved, and rejects invalid width/stride/null-buffer inputs before writing. Both run in the `Framebuffer range checks` GitHub Actions workflow.
+
+These host tests cover arithmetic and the in-memory RGB888 pixel layout only. They do not compile the Xilinx BSP application and do not prove that the framebuffer address is mapped to DDR, that cache maintenance is correct on the target, or that the VDMA/display path works.
 
 ## Software checks
 

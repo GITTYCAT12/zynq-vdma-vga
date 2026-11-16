@@ -7,6 +7,7 @@
 #include "xil_cache.h"
 #include "xil_printf.h"
 #include "framebuffer_range.h"
+#include "framebuffer_pattern.h"
 
 // --- Display Parameters (640x480 @ 24-bit RGB) ---
 #define FRAME_WIDTH          640
@@ -35,127 +36,19 @@ XAxiVdma VdmaInstance;
 
 // Function Prototypes
 int Validate_Framebuffer_Config(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
-int Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
-int Init_And_Start_VDMA(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride);
-
-int main(void) {
-    xil_printf("\r\n=====================================================\r\n");
-    xil_printf("   ZYNQ VDMA VGA DISPLAY SYSTEM - HARDWARE INITIALIZED\r\n");
-    xil_printf("=====================================================\r\n");
-
-    // Reject an invalid framebuffer geometry or byte range before touching DDR or VDMA registers.
-    if (Validate_Framebuffer_Config((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE) != XST_SUCCESS) {
-        xil_printf("FATAL ERROR: Invalid framebuffer configuration!\r\n");
-        return -1;
-    }
-
-    // 1. Generate 8 RGB Color Bars in DDR Memory
-    xil_printf("1. Writing 640x480 RGB Color Pattern to DDR RAM (0x%08X)...\r\n", (unsigned int)FRAME_BUFFER_BASE_ADDR);
-    if (Draw_RGB_Color_Bars((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE) != XST_SUCCESS) {
-        xil_printf("FATAL ERROR: Framebuffer generation failed!\r\n");
-        return -1;
-    }
-
-    // 2. Configure and Start VDMA Engine
-    xil_printf("2. Initializing AXI VDMA Read Controller...\r\n");
-    if (Init_And_Start_VDMA((uintptr_t)FRAME_BUFFER_BASE_ADDR, FRAME_WIDTH, FRAME_HEIGHT, STRIDE) != XST_SUCCESS) {
-        xil_printf("FATAL ERROR: VDMA Hardware Initialization Failed!\r\n");
-        return -1;
-    }
-
-    xil_printf("3. SUCCESS: Video Streaming Active! VDMA reading DDR continuously.\r\n");
-    xil_printf("=====================================================\r\n");
-
-    // Main CPU stays idle while VDMA streams framebuffers in background hardware
-    while (1) {
-        // Application running
-    }
-
-    return 0;
-}
-
-// Validate geometry and the complete byte range before writing memory or programming VDMA.
-int Validate_Framebuffer_Config(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride) {
-    uint32_t MinimumStride;
-
-    if (Width == 0 || Height == 0) {
-        xil_printf("ERROR: Frame width/height must be non-zero.\r\n");
-        return XST_FAILURE;
-    }
-
-    // Protect the width-to-byte conversion from 32-bit overflow.
-    if (Width > (UINT32_MAX / BYTES_PER_PIXEL)) {
-        xil_printf("ERROR: Frame width overflows RGB byte calculation.\r\n");
-        return XST_FAILURE;
-    }
-
-    MinimumStride = Width * BYTES_PER_PIXEL;
-    if (Stride < MinimumStride) {
-        xil_printf("ERROR: Stride (%u) is smaller than required (%u).\r\n", (unsigned int)Stride, (unsigned int)MinimumStride);
-        return XST_FAILURE;
-    }
-
-    // The color-bar generator expects the width to divide into 8 equal bars.
-    if ((Width % 8U) != 0U) {
-        xil_printf("ERROR: Width (%u) must be divisible by 8 for color bars.\r\n", (unsigned int)Width);
-        return XST_FAILURE;
-    }
-
-    // Keep the actual framebuffer base word-aligned for typical AXI VDMA configurations.
-    if ((FrameAddr & 0x3U) != 0U) {
-        xil_printf("ERROR: Framebuffer base address is not word-aligned.\r\n");
-        return XST_FAILURE;
-    }
-
-    // row * Stride, Height * Stride, the cache-flush length and the address
-    // end must all remain representable before the buffer is touched.
-    if (!Framebuffer_Range_Is_Valid(FrameAddr, Height, Stride)) {
-        xil_printf("ERROR: Framebuffer byte range overflows supported size or address limits.\r\n");
-        return XST_FAILURE;
-    }
-
-    return XST_SUCCESS;
-}
-
-// Draw 8 SMPTE RGB Color Bars (White, Yellow, Cyan, Green, Magenta, Red, Blue, Black)
 int Draw_RGB_Color_Bars(uintptr_t FrameAddr, uint32_t Width, uint32_t Height, uint32_t Stride) {
     uint8_t *BufferPtr = (uint8_t *)FrameAddr;
-    uint32_t row;
-    uint32_t col;
-    uint32_t BarWidth;
-    uint8_t ColorPalette[8][3] = {
-        {255, 255, 255}, // White
-        {255, 255,   0}, // Yellow
-        {  0, 255, 255}, // Cyan
-        {  0, 255,   0}, // Green
-        {255,   0, 255}, // Magenta
-        {255,   0,   0}, // Red
-        {  0,   0, 255}, // Blue
-        {  0,   0,   0}  // Black
-    };
 
     if (Validate_Framebuffer_Config(FrameAddr, Width, Height, Stride) != XST_SUCCESS) {
         return XST_FAILURE;
     }
 
-    BarWidth = Width / 8U;
-
-    for (row = 0; row < Height; row++) {
-        for (col = 0; col < Width; col++) {
-            uint32_t BarIndex = col / BarWidth;
-            if (BarIndex > 7U) {
-                BarIndex = 7U;
-            }
-
-            uint32_t ByteOffset = (row * Stride) + (col * BYTES_PER_PIXEL);
-
-            BufferPtr[ByteOffset + 0] = ColorPalette[BarIndex][0]; // Red
-            BufferPtr[ByteOffset + 1] = ColorPalette[BarIndex][1]; // Green
-            BufferPtr[ByteOffset + 2] = ColorPalette[BarIndex][2]; // Blue
-        }
+    if (!Framebuffer_Fill_RGB_Color_Bars(BufferPtr, Width, Height, Stride)) {
+        xil_printf("ERROR: RGB color-bar framebuffer generation failed.\r\n");
+        return XST_FAILURE;
     }
 
-    // CRITICAL: Flush CPU L1/L2 Cache so VDMA reads pixels directly from DDR RAM!
+    // Flush the complete validated framebuffer range before VDMA reads DDR.
     Xil_DCacheFlushRange((INTPTR)FrameAddr, (u32)(Height * Stride));
 
     return XST_SUCCESS;

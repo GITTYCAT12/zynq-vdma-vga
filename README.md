@@ -52,7 +52,7 @@ The standalone application follows a deliberate order so the DMA engine is never
 
 The application also checks VDMA configuration, driver initialization, DMA configuration, buffer-address programming, and DMA start status. Any failure stops initialization and reports the failing stage over UART.
 
-The portable byte-range helper has a host-side C regression test. It checks integer and address-range arithmetic only; it does not compile the Xilinx BSP application or establish DDR mapping, cache-coherency, VDMA, or display behavior.
+Portable host-side C regression tests cover framebuffer byte-range arithmetic and the RGB888 color-bar pixel layout, including row-padding preservation and invalid geometry. They do not compile the Xilinx BSP application or establish DDR mapping, cache-coherency, VDMA, or display behavior.
 
 ## Framebuffer configuration
 

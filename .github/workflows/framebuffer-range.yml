@@ -6,6 +6,7 @@ on:
     paths:
       - "vdma_vga_app/src/main.c"
       - "vdma_vga_app/src/framebuffer_range.h"
+      - "vdma_vga_app/src/framebuffer_pattern.h"
       - "tests/**"
       - ".github/workflows/framebuffer-range.yml"
   pull_request:
